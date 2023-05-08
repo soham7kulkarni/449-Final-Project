@@ -14,7 +14,7 @@ uri = "mongodb+srv://root:CP107@cluster0.gospo3x.mongodb.net/?retryWrites=true&w
 port = 8000
 client = motor.motor_asyncio.AsyncIOMotorClient(uri, port = port)
 db = client["db1"]
-collection = db["gd_collection"]
+collection = db["collection"]
 
 # Send a ping to confirm a successful connection
 try:
@@ -25,14 +25,13 @@ except Exception as e:
 
 
 
-
 # Customized Pydantic model for data validation 
 class Book(BaseModel):
-    title: Optional[str] = None
-    authors: Optional[str] = None
+    title: Optional[str]
+    authors: Optional[str]
     description: Optional[str] = None
-    price: Optional[str] = None
-    stock: Optional[str] = None
+    price: Optional[float]
+    stock: Optional[float]
 
 
 
@@ -44,6 +43,31 @@ app = FastAPI()
 @app.get("/")
 async def root():
     return {"message": "Hello World"}
+
+@app.get("/total")
+async def total():
+    count = await collection.count_documents({})
+    return count
+
+@app.get("/top5books")
+async def top_5_books():
+    top_books = await collection.aggregate([
+        {"$group": {"_id": "$title", "total_stock": {"$sum": "$stock"}}},
+        {"$sort": {"total_stock": -1}},
+        {"$limit": 5}]).to_list(length=None)
+    return top_books
+
+
+@app.get("/top5authors")
+async def top_5_authors():
+    top_authors = await collection.aggregate([
+        {"$group": {"_id": "$authors", "total_stock": {"$sum": "$stock"}}},
+        {"$sort": {"total_stock": -1}},
+        {"$limit": 5}]).to_list(length=None)
+    return top_authors
+
+
+
 
 @app.get("/bookss/{title}")
 async def get_book_by_title(title: str):
