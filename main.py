@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from pymongo.mongo_client import MongoClient
 import motor.motor_asyncio
 from bson.objectid import ObjectId
+from urllib.parse import quote
 
 
 
@@ -25,15 +26,15 @@ except Exception as e:
 
 
 
-
 # Customized Pydantic model for data validation 
 class Book(BaseModel):
     book_id:int
     title: str
     author: Optional[str]
     description: Optional[str] = None
-    price: float
-    stock: int
+    price: Optional[float]
+    stock: Optional[float]
+
 
 
 
@@ -44,6 +45,38 @@ app = FastAPI()
 @app.get("/")
 async def root():
     return {"message": "Hello World"}
+
+@app.get("/total")
+async def total():
+    count = await collection.count_documents({})
+    return count
+
+@app.get("/top5books")
+async def top_5_books():
+    top_books = await collection.aggregate([
+        {"$group": {"_id": "$title", "total_stock": {"$sum": "$stock"}}},
+        {"$sort": {"total_stock": -1}},
+        {"$limit": 5}]).to_list(length=None)
+    return top_books
+
+
+@app.get("/top5authors")
+async def top_5_authors():
+    top_authors = await collection.aggregate([
+        {"$group": {"_id": "$author", "total_stock": {"$sum": "$stock"}}},
+        {"$sort": {"total_stock": -1}},
+        {"$limit": 5}]).to_list(length=None)
+    return top_authors
+
+
+
+
+@app.get("/bookss/{title}")
+async def get_book_by_title(title: str):
+    book = await collection.find_one({"title": str(title)})
+    return Book(**book)
+    
+
 
 @app.get("/books/{book_id}")
 async def get_book(book_id: int):
@@ -60,21 +93,20 @@ async def get_all_books():
 @app.post("/books")
 async def add_book(book:Book):
     book_dict = book.dict()
-    print(book_dict)
     result = await collection.insert_one(book_dict)
     inserted_book = await collection.find_one({"_id": result.inserted_id})
     return Book(**inserted_book)
 
-@app.put("/books/{book_id}")
-async def update_book(book_id:int,book:Book):
-    result = await collection.find_one({"book_id":book_id})
-    if result:
-        updated_result=await collection.replace_one({"book_id":book_id},{"book_id":book_id,"title":book.title,"author":book.author,"description":book.description,"price":book.price,"stock":book.stock})
-        return {"message":f"total {updated_result.modified_count} books changed"}
+@app.put("/books/{id}")
+async def update_book(id: int, book: Book):
+    book_dict = book.dict()
+    result = await collection.update_one({"book_id": id}, {"$set": book_dict})
+    if result.modified_count == 1:
+        return {"message": "Book with id {} updated".format(id)} 
     else:
-        return "book with id : {book_id} not found"
+        return {"message": "Book with id {} not found".format(id)}
 
-@app.delete("/{id}")
+@app.delete("/books/{id}")
 async def delete_book(id: int):
     result = await collection.find_one({"book_id": id})
     if result:
@@ -83,14 +115,28 @@ async def delete_book(id: int):
         return {"message":f"book with title '{title}' deleted"}
     else:
         return {"message": f"Book with id '{id}' not found."}
+    
+@app.get("/search")
+async def get_book_by_query(title: str = None, author: str = None, min_price: int = None, max_price: int = None):
+    query = {}
+    if min_price is not None:
+        query["price"] = {"$gte": min_price}
+    if max_price is not None:
+        if "price" in query:
+            query["price"]["$lte"] = max_price
+        else:
+            query["price"] = {"$lte": max_price}
+    if title is not None:
+        query["title"] = {"$regex": title, "$options": "i"}
+    if author is not None:
+        query["author"] = {"$regex": author, "$options": "i"}
+    books = []
+    async for book in collection.find(query):
+        books.append(Book(**book))
+    return books
 
 if __name__=="__main__":
     uvicorn.run("main:app", host="127.0.0.1", port=8000)
  
-# @app.put("/books/{book_id}")
-# async def update_book():
-#     return ___________
 
-# @app.delete("/books/{book_id}")
-# async def delete_book():
-#     return ___________
+
