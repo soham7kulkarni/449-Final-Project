@@ -24,8 +24,6 @@ try:
 except Exception as e:
     print(e)
 
-
-
 # Customized Pydantic model for data validation 
 class Book(BaseModel):
     book_id:int
@@ -36,8 +34,6 @@ class Book(BaseModel):
     stock: Optional[float]
 
 
-
-
 # creating instance of FastApi
 app = FastAPI()
 
@@ -46,11 +42,13 @@ app = FastAPI()
 async def root():
     return {"message": "Hello World"}
 
+# Retrieves list of all books in the store
 @app.get("/total")
 async def total():
     count = await collection.count_documents({})
     return count
 
+# Retrieves top 5 books
 @app.get("/top5books")
 async def top_5_books():
     top_books = await collection.aggregate([
@@ -59,7 +57,7 @@ async def top_5_books():
         {"$limit": 5}]).to_list(length=None)
     return top_books
 
-
+# Retrieves top 5 authors
 @app.get("/top5authors")
 async def top_5_authors():
     top_authors = await collection.aggregate([
@@ -68,16 +66,13 @@ async def top_5_authors():
         {"$limit": 5}]).to_list(length=None)
     return top_authors
 
-
-
-
+# Retrieves book based on title
 @app.get("/bookss/{title}")
 async def get_book_by_title(title: str):
     book = await collection.find_one({"title": str(title)})
     return Book(**book)
     
-
-
+# Retrieves a specific book by ID
 @app.get("/books/{book_id}")
 async def get_book(book_id: int):
     book = await collection.find_one({"book_id":book_id})
@@ -90,6 +85,7 @@ async def get_all_books():
         books.append(Book(**book))
     return books
 
+# Adds a new book to the store
 @app.post("/books")
 async def add_book(book:Book):
     book_dict = book.dict()
@@ -97,6 +93,7 @@ async def add_book(book:Book):
     inserted_book = await collection.find_one({"_id": result.inserted_id})
     return Book(**inserted_book)
 
+# Deletes a book from the store by ID
 @app.put("/books/{id}")
 async def update_book(id: int, book: Book):
     book_dict = book.dict()
@@ -115,7 +112,9 @@ async def delete_book(id: int):
         return {"message":f"book with title '{title}' deleted"}
     else:
         return {"message": f"Book with id '{id}' not found."}
-    
+
+
+# Searches for books by title, author, and price range
 @app.get("/search")
 async def get_book_by_query(title: str = None, author: str = None, min_price: int = None, max_price: int = None):
     query = {}
